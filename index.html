@@ -415,7 +415,6 @@ fadou:{code:"IFP",n:"法斗",t:"佛系摆烂大师",c:"#C7B299",tags:["佛系","
  pair:"samoye",pairC:"咸鱼 × 天使",rival:"jinmao",rivalC:"它拉你遛弯，你跟它急"}
 };
 const ORDER=["bianmu","hashiqi","jinmao","keji","tianyuan","chaiquan","samoye","fadou"];
-const CNT_KEYS={bianmu:"bianmu",hashiqi:"hashiqi",jinmao:"jinmao",keji:"keji",tianyuan:"tianyuan",chaiquan:"chaiquan",samoye:"samoye",fadou:"fadou"};
 
 const AXES=[
  {a:"E",b:"I",la:"撒欢型",lb:"独处型"},
@@ -445,21 +444,24 @@ const QUIZ=[
  {label:"Q18 · 说走就走",title:"你怎么看待「说走就走的旅行」——",opts:[["这才叫活着，现在就订票","P"],["不规划的旅行让我焦虑","J"],["可以，但请给我半天收拾","M"]]}
 ];
 
-/* ==================== 计数 API（免费无 key，counterapi.com） ==================== */
-const NS="dogti-quiz-v1";
-function cntURL(name,inc){return `https://counterapi.com/api/${NS}/done/${name}${inc?"":"?readOnly=true"}`}
-function hit(name){try{fetch(cntURL(name,true)).catch(()=>{})}catch(e){}}
+/* ==================== 计数 API（JSONBin 免费存储） ==================== */
+const BIN="6ae6b2eeffd5d160539c74a8";
+const MASTER="$2a$10$DGGS576Hha5pIS5IjmsafedR4xD7e8o8lN14WtbtNn8qVnwZSgqAW";
+const BIN_URL="https://api.jsonbin.io/v3/b/"+BIN;
+function fetchBin(){
+  return fetch(BIN_URL+"/latest",{headers:{"X-Master-Key":MASTER}})
+    .then(r=>r.json()).then(j=>j.record||null);
+}
+function recordResult(key){
+  fetchBin().then(rec=>{
+    if(!rec)return;
+    rec.zongrenshu=(rec.zongrenshu||0)+1;
+    rec[key]=(rec[key]||0)+1;
+    return fetch(BIN_URL,{method:"PUT",headers:{"X-Master-Key":MASTER,"Content-Type":"application/json"},body:JSON.stringify(rec)});
+  }).catch(()=>{});
+}
 function readCnt(name){
-  return new Promise(res=>{
-    const cb="_dogti_"+Math.random().toString(36).slice(2);
-    const t=setTimeout(()=>{cleanup();res(null)},6000);
-    function cleanup(){delete window[cb];const s=document.getElementById("jp_"+cb);if(s)s.remove()}
-    window[cb]=v=>{clearTimeout(t);cleanup();res(typeof v==="number"?v:(v&&typeof v.value==="number"?v.value:null))};
-    const s=document.createElement("script");
-    s.id="jp_"+cb;s.src=cntURL(name,false)+(cntURL(name,false).includes("?")?"&":"?")+"callback="+cb;
-    s.onerror=()=>{clearTimeout(t);cleanup();res(null)};
-    document.body.appendChild(s);
-  });
+  return fetchBin().then(rec=>(rec&&typeof rec[name]==="number")?rec[name]:null).catch(()=>null);
 }
 
 /* ==================== 路由与状态 ==================== */
@@ -541,7 +543,7 @@ function showResult(){
     <div class="rel-card"><svg viewBox="0 0 240 240">${dogSVG(b.pair)}</svg><div><div class="rel-k">最佳拍档</div><div class="rel-n">${p.n}</div><div class="rel-c">${b.pairC}</div></div></div>
     <div class="rel-card"><svg viewBox="0 0 240 240">${dogSVG(b.rival)}</svg><div><div class="rel-k">欢喜冤家</div><div class="rel-n">${r.n}</div><div class="rel-c">${b.rivalC}</div></div></div>`;
   show("result");
-  hit("zongrenshu");hit(CNT_KEYS[resultKey]);
+  recordResult(resultKey);
   pawRain();
 }
 function renderAxes(){
@@ -606,13 +608,13 @@ async function renderStats(){
   if(statsBusy)return;statsBusy=true;
   $("#statTotal").textContent="…";
   $("#statList").innerHTML=`<div class="stat-note">数据嗅探中…</div>`;
-  const total=await readCnt("zongrenshu");
-  $("#statTotal").textContent=total===null?"—":total;
+  const rec=await fetchBin();
+  const total=rec?rec.zongrenshu:null;
+  $("#statTotal").textContent=total==null?"—":total;
   const rows=[];
   for(const k of ORDER){
-    const v=await readCnt(CNT_KEYS[k]);
-    rows.push([k,v===null?0:v]);
-    await new Promise(r=>setTimeout(r,480)); // 限流 2QPS
+    const v=(rec&&typeof rec[k]==="number")?rec[k]:0;
+    rows.push([k,v]);
   }
   const max=Math.max(1,...rows.map(r=>r[1]));
   $("#statList").innerHTML=rows.map(([k,v])=>{
